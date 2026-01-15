@@ -12,7 +12,7 @@ and RAG jobs can ingest them offline (OpenAI, Gemini, Next.js).
 ## Quick start
 ```bash
 # clone inside or next to your project
-gh repo clone gsusI/llm-docs-sync
+git clone https://github.com/gsusI/llm-docs-sync.git
 cd llm-docs-sync
 
 # fetch both providers into ./docs/
