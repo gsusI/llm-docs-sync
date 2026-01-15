@@ -23,12 +23,16 @@ cd llm-docs-sync
 
 # interactive prompts for output + providers
 ./sync-docs.sh --interactive
+
+# versioned output with a "latest" alias and manifest
+./sync-docs.sh --timestamp-label --latest-alias latest --output docs
 ```
 
 Outputs land under `<output>/<provider>/`. Examples:
 - `docs/openai/index.md` + `docs/openai/groups/*.md` generated from OpenAI’s OpenAPI spec.
 - `docs/gemini/docs/*.md` mirrored from Gemini’s published markdown twins.
 - `docs/anthropic/en/*.md` mirrored from Anthropic’s published Markdown docs (llms.txt-driven).
+- `docs/manifest.json` records provider, path, label, and fetch timestamp.
 
 ## Providers
 - **openai**: Reads `https://platform.openai.com/llms.txt` to locate the OpenAPI spec, then renders Markdown reference grouped by operation tags.
@@ -49,6 +53,13 @@ Adding a provider = drop `providers/<name>.sh` and wire a case entry in `sync-do
 - `providers/anthropic.sh` — mirrors Anthropic/Claude Markdown docs via llms.txt.
 - `providers/nextjs.sh` — clones/concats Next.js docs for a branch or tag.
 - `docs/` (ignored) — default output target when you run the scripts.
+- `docs/manifest.json` — auto-written manifest describing each sync run.
+
+## Versioned layout (recommended)
+Run with `--version-label <label>` or `--timestamp-label` to nest outputs under
+`<output>/<provider>/<label>`, then add `--latest-alias latest` to keep
+`<output>/<provider>/latest` pointing to the newest snapshot. This keeps history
+while preserving a stable path for ingestion tools.
 
 ## Extending to new providers
 1. Create `providers/<name>.sh` that writes docs into the given `--output` dir.
