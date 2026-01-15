@@ -52,6 +52,13 @@ Adding a provider = drop `providers/<name>.sh` and wire a case entry in `sync-do
 3. Keep it dependency-light (curl/rg preferred) and document flags in `usage()`.
 4. Open a PR with a short note in README if you add flags or providers.
 
+## TODO / providers welcome
+- Anthropic (Claude API docs)
+- Mistral
+- Cohere
+- Hugging Face Inference
+- OpenRouter
+
 ## Contributing
 See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome! Please keep scripts readable, small, and well-commented where non-obvious.
 
