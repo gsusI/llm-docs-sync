@@ -1,7 +1,7 @@
 # LLM Docs Sync
 
 Dependency-light scripts that vendor official docs into your project so local tools
-and RAG jobs can ingest them offline (OpenAI, Gemini, Next.js).
+and RAG jobs can ingest them offline (OpenAI, Gemini, Anthropic, Next.js).
 
 ## Features
 - Deterministic, idempotent fetches from each provider’s `llms.txt` index.
@@ -15,7 +15,7 @@ and RAG jobs can ingest them offline (OpenAI, Gemini, Next.js).
 git clone https://github.com/gsusI/llm-docs-sync.git
 cd llm-docs-sync
 
-# fetch both providers into ./docs/
+# fetch OpenAI + Gemini + Anthropic into ./docs/
 ./sync-docs.sh
 
 # fetch only Gemini into ./vendor/llm-docs
@@ -28,10 +28,12 @@ cd llm-docs-sync
 Outputs land under `<output>/<provider>/`. Examples:
 - `docs/openai/index.md` + `docs/openai/groups/*.md` generated from OpenAI’s OpenAPI spec.
 - `docs/gemini/docs/*.md` mirrored from Gemini’s published markdown twins.
+- `docs/anthropic/en/*.md` mirrored from Anthropic’s published Markdown docs (llms.txt-driven).
 
 ## Providers
 - **openai**: Reads `https://platform.openai.com/llms.txt` to locate the OpenAPI spec, then renders Markdown reference grouped by operation tags.
 - **gemini**: Reads `https://ai.google.dev/gemini-api/docs/llms.txt` and mirrors the linked `*.md.txt` docs.
+- **anthropic**: Reads `https://platform.claude.com/llms.txt` (and `llms-full.txt` when available), then mirrors the linked Markdown docs. Use `--lang all` to pull all localized paths.
 - **nextjs**: Clones the Next.js repo docs directory (default branch `canary`) and concatenates all `*.md`/`*.mdx` into a single `index.md`. Pass `--branch <tag-or-branch>` to target a specific release (e.g., `--branch v14.2.3`) and set `--output` to a versioned folder, e.g., `--output docs/nextjs-14.2.3`.
 
 Adding a provider = drop `providers/<name>.sh` and wire a case entry in `sync-docs.sh`.
@@ -44,6 +46,8 @@ Adding a provider = drop `providers/<name>.sh` and wire a case entry in `sync-do
 - `sync-docs.sh` — entrypoint that dispatches to providers.
 - `providers/openai.sh` — fetches OpenAI spec + generates Markdown groups.
 - `providers/gemini.sh` — mirrors Gemini Markdown twins.
+- `providers/anthropic.sh` — mirrors Anthropic/Claude Markdown docs via llms.txt.
+- `providers/nextjs.sh` — clones/concats Next.js docs for a branch or tag.
 - `docs/` (ignored) — default output target when you run the scripts.
 
 ## Extending to new providers
@@ -53,7 +57,6 @@ Adding a provider = drop `providers/<name>.sh` and wire a case entry in `sync-do
 4. Open a PR with a short note in README if you add flags or providers.
 
 ## TODO / providers welcome
-- Anthropic (Claude API docs)
 - Mistral
 - Cohere
 - Hugging Face Inference
