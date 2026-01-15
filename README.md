@@ -1,7 +1,7 @@
 # LLM Docs Sync
 
 Dependency-light scripts that vendor official docs into your project so local tools
-and RAG jobs can ingest them offline (OpenAI, Gemini, Anthropic, Next.js).
+and RAG jobs can ingest them offline (OpenAI, Gemini, Anthropic, Hugging Face, Next.js).
 
 ## Features
 - Deterministic, idempotent fetches from each provider’s `llms.txt` index.
@@ -26,18 +26,23 @@ cd llm-docs-sync
 
 # versioned output with a "latest" alias and manifest
 ./sync-docs.sh --timestamp-label --latest-alias latest --output docs
+
+# Hugging Face often rate-limits anonymous access; pass a token if needed
+HF_TOKEN=hf_xxx ./sync-docs.sh huggingface
 ```
 
 Outputs land under `<output>/<provider>/`. Examples:
 - `docs/openai/index.md` + `docs/openai/groups/*.md` generated from OpenAI’s OpenAPI spec.
 - `docs/gemini/docs/*.md` mirrored from Gemini’s published markdown twins.
 - `docs/anthropic/en/*.md` mirrored from Anthropic’s published Markdown docs (llms.txt-driven).
+- `docs/huggingface/hub/*.md` mirrored from Hugging Face Hub docs (llms.txt-driven).
 - `docs/manifest.json` records provider, path, label, and fetch timestamp.
 
 ## Providers
 - **openai**: Reads `https://platform.openai.com/llms.txt` to locate the OpenAPI spec, then renders Markdown reference grouped by operation tags.
 - **gemini**: Reads `https://ai.google.dev/gemini-api/docs/llms.txt` and mirrors the linked `*.md.txt` docs.
 - **anthropic**: Reads `https://platform.claude.com/llms.txt` (and `llms-full.txt` when available), then mirrors the linked Markdown docs. Use `--lang all` to pull all localized paths.
+- **huggingface**: Reads `https://huggingface.co/docs/hub/llms.txt` (and `llms-full.txt` when available) and mirrors the linked Hub Markdown docs. Large runs may require a Hugging Face token: `HF_TOKEN=... ./sync-docs.sh huggingface`.
 - **nextjs**: Clones the Next.js repo docs directory (default branch `canary`) and concatenates all `*.md`/`*.mdx` into a single `index.md`. Pass `--branch <tag-or-branch>` to target a specific release (e.g., `--branch v14.2.3`) and set `--output` to a versioned folder, e.g., `--output docs/nextjs-14.2.3`.
 
 Adding a provider = drop `providers/<name>.sh` and wire a case entry in `sync-docs.sh`.
@@ -51,6 +56,7 @@ Adding a provider = drop `providers/<name>.sh` and wire a case entry in `sync-do
 - `providers/openai.sh` — fetches OpenAI spec + generates Markdown groups.
 - `providers/gemini.sh` — mirrors Gemini Markdown twins.
 - `providers/anthropic.sh` — mirrors Anthropic/Claude Markdown docs via llms.txt.
+- `providers/huggingface.sh` — mirrors Hugging Face Hub docs via llms.txt.
 - `providers/nextjs.sh` — clones/concats Next.js docs for a branch or tag.
 - `docs/` (ignored) — default output target when you run the scripts.
 - `docs/manifest.json` — auto-written manifest describing each sync run.
@@ -70,7 +76,7 @@ while preserving a stable path for ingestion tools.
 ## TODO / providers welcome
 - Mistral
 - Cohere
-- Hugging Face Inference
+- Hugging Face Inference API
 - OpenRouter
 
 ## Contributing

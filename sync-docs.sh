@@ -14,6 +14,7 @@ Providers available:
 - openai
 - gemini
 - anthropic
+- huggingface
 - nextjs
 
 Examples:
@@ -82,7 +83,7 @@ if [[ "$INTERACTIVE" == true ]]; then
     OUTPUT_ROOT="$answer"
   fi
 
-  echo "Available providers: openai gemini anthropic nextjs"
+  echo "Available providers: openai gemini anthropic huggingface nextjs"
   read -r -p "Providers (space separated) [${default_providers}]: " answer
   if [[ -n "${answer:-}" ]]; then
     providers=($answer)
@@ -131,6 +132,9 @@ for provider in "${providers[@]}"; do
       ;;
     anthropic)
       "$SCRIPT_DIR/providers/anthropic.sh" --output "$base_dir"
+      ;;
+    huggingface)
+      "$SCRIPT_DIR/providers/huggingface.sh" --output "$base_dir"
       ;;
     nextjs)
       "$SCRIPT_DIR/providers/nextjs.sh" --output "$base_dir"
