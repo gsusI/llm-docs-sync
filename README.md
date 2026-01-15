@@ -82,6 +82,9 @@ while preserving a stable path for ingestion tools.
 ## TODO / providers welcome
 - Mistral
 - Hugging Face Inference API
+- AWS Bedrock (direct)
+- Azure OpenAI
+- Google Vertex AI
 
 ## Contributing
 See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome! Please keep scripts readable, small, and well-commented where non-obvious.
