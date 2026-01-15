@@ -17,6 +17,7 @@ Providers available:
 - huggingface
 - openrouter
 - cohere
+- mistral
 - nextjs
 
 Examples:
@@ -85,7 +86,7 @@ if [[ "$INTERACTIVE" == true ]]; then
     OUTPUT_ROOT="$answer"
   fi
 
-  echo "Available providers: openai gemini anthropic huggingface openrouter cohere nextjs"
+  echo "Available providers: openai gemini anthropic huggingface openrouter cohere mistral nextjs"
   read -r -p "Providers (space separated) [${default_providers}]: " answer
   if [[ -n "${answer:-}" ]]; then
     providers=($answer)
@@ -143,6 +144,9 @@ for provider in "${providers[@]}"; do
       ;;
     cohere)
       "$SCRIPT_DIR/providers/cohere.sh" --output "$base_dir"
+      ;;
+    mistral)
+      "$SCRIPT_DIR/providers/mistral.sh" --output "$base_dir"
       ;;
     nextjs)
       "$SCRIPT_DIR/providers/nextjs.sh" --output "$base_dir"

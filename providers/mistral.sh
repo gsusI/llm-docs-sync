@@ -3,15 +3,15 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: providers/cohere.sh [--output DIR] [--index-url URL] [--full-index-url URL] [--throttle-seconds SECONDS]
+Usage: providers/mistral.sh [--output DIR] [--index-url URL] [--full-index-url URL] [--throttle-seconds SECONDS]
 
-Mirror the Cohere docs referenced by llms.txt.
+Mirror the Mistral docs referenced by llms.txt.
 USAGE
 }
 
-OUTPUT_DIR="cohere-docs"
-INDEX_URL="https://docs.cohere.com/llms.txt"
-FULL_INDEX_URL="https://docs.cohere.com/llms-full.txt"
+OUTPUT_DIR="mistral-docs"
+INDEX_URL="https://docs.mistral.ai/llms.txt"
+FULL_INDEX_URL="https://docs.mistral.ai/llms-full.txt"
 THROTTLE_SECONDS="0.1"
 
 while [[ $# -gt 0 ]]; do
@@ -55,5 +55,5 @@ fi
 
 LLMS_CURL_BASE=(curl -fsSL --retry 5 --retry-delay 2 --retry-connrefused --retry-all-errors --retry-max-time 120 --http1.1)
 
-PATTERN="https://docs\\.cohere\\.com/[A-Za-z0-9._\\-/]+\\.mdx?"
-llms_mirror "cohere" "$INDEX_URL" "$FULL_INDEX_URL" "$PATTERN" "https://docs.cohere.com/" "" "$OUT_DIR" "$THROTTLE_SECONDS"
+PATTERN="https://docs\\.mistral\\.ai/[A-Za-z0-9._\\-/]+\\.mdx?"
+llms_mirror "mistral" "$INDEX_URL" "$FULL_INDEX_URL" "$PATTERN" "https://docs.mistral.ai/" "" "$OUT_DIR" "$THROTTLE_SECONDS"
