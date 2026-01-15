@@ -15,6 +15,7 @@ Providers available:
 - gemini
 - anthropic
 - huggingface
+- openrouter
 - nextjs
 
 Examples:
@@ -135,6 +136,9 @@ for provider in "${providers[@]}"; do
       ;;
     huggingface)
       "$SCRIPT_DIR/providers/huggingface.sh" --output "$base_dir"
+      ;;
+    openrouter)
+      "$SCRIPT_DIR/providers/openrouter.sh" --output "$base_dir"
       ;;
     nextjs)
       "$SCRIPT_DIR/providers/nextjs.sh" --output "$base_dir"
