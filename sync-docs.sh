@@ -4,6 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage: ./sync-docs.sh [--output DIR] [provider ...]
+       ./sync-docs.sh --interactive
 
 Fetch docs for the given providers (default: openai gemini).
 Outputs land in DIR/<provider>, so you can vendor docs inside your project for
@@ -23,12 +24,17 @@ USAGE
 
 OUTPUT_ROOT="docs"
 providers=()
+INTERACTIVE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output)
       OUTPUT_ROOT="${2:-}"
       shift 2
+      ;;
+    -i|--interactive)
+      INTERACTIVE=true
+      shift
       ;;
     -h|--help)
       usage
@@ -46,6 +52,26 @@ if [[ ${#providers[@]} -eq 0 ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ "$INTERACTIVE" == true ]]; then
+  default_providers="${providers[*]}"
+  if [[ -z "$default_providers" ]]; then
+    default_providers="openai gemini"
+  fi
+
+  read -r -p "Output directory [${OUTPUT_ROOT}]: " answer
+  if [[ -n "${answer:-}" ]]; then
+    OUTPUT_ROOT="$answer"
+  fi
+
+  echo "Available providers: openai gemini nextjs"
+  read -r -p "Providers (space separated) [${default_providers}]: " answer
+  if [[ -n "${answer:-}" ]]; then
+    providers=($answer)
+  else
+    providers=($default_providers)
+  fi
+fi
 
 mkdir -p "$OUTPUT_ROOT"
 

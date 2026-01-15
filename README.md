@@ -20,6 +20,9 @@ cd llm-docs-sync
 
 # fetch only Gemini into ./vendor/llm-docs
 ./sync-docs.sh --output vendor/llm-docs gemini
+
+# interactive prompts for output + providers
+./sync-docs.sh --interactive
 ```
 
 Outputs land under `<output>/<provider>/`. Examples:
