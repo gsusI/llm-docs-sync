@@ -83,7 +83,7 @@ require "yaml"
 require "fileutils"
 
 spec_path, out_dir, source_url, generated_at = ARGV
-spec = YAML.load_file(spec_path)
+spec = YAML.safe_load(File.read(spec_path), aliases: true)
 
 info = spec["info"] || {}
 paths = spec["paths"] || {}
