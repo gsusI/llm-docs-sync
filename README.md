@@ -1,7 +1,7 @@
 # LLM Docs Sync
 
-Dependency-light scripts that vendor official LLM provider docs (OpenAI & Gemini) into
-your project so local tools and RAG jobs can ingest them offline.
+Dependency-light scripts that vendor official docs into your project so local tools
+and RAG jobs can ingest them offline (OpenAI, Gemini, Next.js).
 
 ## Features
 - Deterministic, idempotent fetches from each provider’s `llms.txt` index.
@@ -29,6 +29,7 @@ Outputs land under `<output>/<provider>/`. Examples:
 ## Providers
 - **openai**: Reads `https://platform.openai.com/llms.txt` to locate the OpenAPI spec, then renders Markdown reference grouped by operation tags.
 - **gemini**: Reads `https://ai.google.dev/gemini-api/docs/llms.txt` and mirrors the linked `*.md.txt` docs.
+- **nextjs**: Clones the Next.js repo docs directory (default branch `canary`) and concatenates all `*.md`/`*.mdx` into a single `index.md`.
 
 Adding a provider = drop `providers/<name>.sh` and wire a case entry in `sync-docs.sh`.
 

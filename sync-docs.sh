@@ -5,13 +5,14 @@ usage() {
   cat <<'USAGE'
 Usage: ./sync-docs.sh [--output DIR] [provider ...]
 
-Fetch LLM API docs for the given providers (default: openai gemini).
+Fetch docs for the given providers (default: openai gemini).
 Outputs land in DIR/<provider>, so you can vendor docs inside your project for
 LLM RAG or offline use.
 
 Providers available:
 - openai
 - gemini
+- nextjs
 
 Examples:
   ./sync-docs.sh                     # fetch OpenAI + Gemini into ./docs
@@ -55,6 +56,9 @@ for provider in "${providers[@]}"; do
       ;;
     gemini)
       "$SCRIPT_DIR/providers/gemini.sh" --output "$OUTPUT_ROOT/gemini"
+      ;;
+    nextjs)
+      "$SCRIPT_DIR/providers/nextjs.sh" --output "$OUTPUT_ROOT/nextjs"
       ;;
     *)
       echo "Unknown provider: $provider" >&2

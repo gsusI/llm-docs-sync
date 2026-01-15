@@ -19,6 +19,7 @@ git clone https://github.com/gsusI/llm-docs-sync.git
 cd llm-docs-sync
 ./sync-docs.sh --output /tmp/llmdocs gemini   # quick smoke test
 ./sync-docs.sh --output /tmp/llmdocs openai   # requires Ruby
+./sync-docs.sh --output /tmp/llmdocs nextjs   # clones docs from Next.js repo
 ```
 
 ## Style & guidelines
