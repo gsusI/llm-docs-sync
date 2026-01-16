@@ -61,8 +61,8 @@ Outputs land under `<output>/<provider>/`. Examples:
 - `docs/mistral/*.md` mirrored from Mistral docs (llms.txt-driven).
 - `docs/nextjs/index.md` concatenated from the Next.js GitHub docs tree.
 - Additional mirrors supported: Supabase, Groq, xAI, Stripe, Cloudflare, Netlify, Twilio,
-  DigitalOcean, Railway, Neon, Turso, Prisma, Pinecone, Retool, Zapier, Perplexity,
-  ElevenLabs, Pinata, Datadog, WorkOS, Clerk, LiteLLM, CrewAI (all via llms.txt).
+  DigitalOcean, Railway, Neon, Turso, Prisma, Pinecone, Polymarket, Retool, Zapier,
+  Perplexity, ElevenLabs, Pinata, Datadog, WorkOS, Clerk, LiteLLM, CrewAI (all via llms.txt).
 - `docs/manifest.json` records provider, path, label, timestamp, and status.
 
 ## Providers
@@ -84,6 +84,8 @@ Run `./sync-docs.sh --list` to see all installed provider definitions.
   and mirrors the linked `.md`/`.mdx` docs.
 - **mistral**: Reads `https://docs.mistral.ai/llms.txt` (and `llms-full.txt` when available)
   and mirrors the linked `.md`/`.mdx` docs.
+- **polymarket**: Reads `https://docs.polymarket.com/llms.txt` (and `llms-full.txt` when
+  available) and mirrors the linked `.md` docs.
 - **nextjs**: Pulls docs from the Next.js repo (default branch `canary`) and concatenates
   all `*.md`/`*.mdx` into a single `index.md`. Override with `NEXTJS_BRANCH=...`.
 - **supabase**, **groq**, **xai**, **stripe**, **cloudflare**, **netlify**, **twilio**,
