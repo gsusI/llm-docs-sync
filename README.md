@@ -56,13 +56,18 @@ Outputs land under `<output>/<provider>/`. Examples:
 - `docs/gemini/docs/*.md` mirrored from Gemini's published markdown twins.
 - `docs/anthropic/en/*.md` mirrored from Anthropic's published Markdown docs (llms.txt-driven).
 - `docs/huggingface/hub/*.md` mirrored from Hugging Face Hub docs (llms.txt-driven).
+- `docs/huggingface-inference-providers/*.md` mirrored from Hugging Face Inference Providers docs (llms.txt-driven).
 - `docs/openrouter/*.mdx` mirrored from OpenRouter docs (llms.txt-driven).
 - `docs/cohere/*.mdx` mirrored from Cohere docs (llms.txt-driven).
 - `docs/mistral/*.md` mirrored from Mistral docs (llms.txt-driven).
+- `docs/langchain/*.md` mirrored from LangChain docs (llms.txt-driven).
+- `docs/langgraph/*` mirrored from LangGraph docs (llms.txt-driven).
+- `docs/langgraphjs/*` mirrored from LangGraph JS docs (llms.txt-driven).
 - `docs/nextjs/index.md` concatenated from the Next.js GitHub docs tree.
 - Additional mirrors supported: Supabase, Groq, xAI, Stripe, Cloudflare, Netlify, Twilio,
-  DigitalOcean, Railway, Neon, Turso, Prisma, Pinecone, Polymarket, Retool, Zapier,
-  Perplexity, ElevenLabs, Pinata, Datadog, WorkOS, Clerk, LiteLLM, CrewAI (all via llms.txt).
+  DigitalOcean, Railway, Neon, Turso, Prisma, Pinecone, Polymarket, LangChain, LangGraph,
+  LangGraphJS, Hugging Face Inference Providers, Retool, Zapier, Perplexity, ElevenLabs,
+  Pinata, Datadog, WorkOS, Clerk, LiteLLM, CrewAI (all via llms.txt).
 - `docs/manifest.json` records provider, path, label, timestamp, and status.
 
 ## Providers
@@ -78,12 +83,20 @@ Run `./sync-docs.sh --list` to see all installed provider definitions.
 - **huggingface**: Reads `https://huggingface.co/docs/hub/llms.txt` (and `llms-full.txt`
   when available) and mirrors the linked Hub Markdown docs. Large runs may require a token:
   `HF_TOKEN=... ./sync-docs.sh huggingface`.
+- **huggingface-inference-providers**: Reads `https://huggingface.co/docs/inference-providers/llms.txt`
+  (and `llms-full.txt` when available) and mirrors the linked Inference Providers docs.
 - **openrouter**: Reads `https://openrouter.ai/docs/llms.txt` (and `llms-full.txt` when
   available) and mirrors the linked `.md`/`.mdx` docs.
 - **cohere**: Reads `https://docs.cohere.com/llms.txt` (and `llms-full.txt` when available)
   and mirrors the linked `.md`/`.mdx` docs.
 - **mistral**: Reads `https://docs.mistral.ai/llms.txt` (and `llms-full.txt` when available)
   and mirrors the linked `.md`/`.mdx` docs.
+- **langchain**: Reads `https://docs.langchain.com/llms.txt` (and `llms-full.txt` when
+  available) and mirrors the linked `.md` docs.
+- **langgraph**: Reads `https://langchain-ai.github.io/langgraph/llms.txt` (and
+  `llms-full.txt` when available) and mirrors the linked docs pages.
+- **langgraphjs**: Reads `https://langchain-ai.github.io/langgraphjs/llms.txt` (and
+  `llms-full.txt` when available) and mirrors the linked docs pages.
 - **polymarket**: Reads `https://docs.polymarket.com/llms.txt` (and `llms-full.txt` when
   available) and mirrors the linked `.md` docs.
 - **nextjs**: Pulls docs from the Next.js repo (default branch `canary`) and concatenates
