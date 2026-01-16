@@ -9,7 +9,11 @@ Supabase/Groq/Stripe/Cloudflare/etc.).
 - Deterministic, idempotent fetches (no timestamps unless you opt in with `--version-label`).
 - Provider definitions live in `providers/defs/*.sh` and are dispatched via `providers/run.sh`.
 - Ad-hoc `--source` mode for llms.txt, OpenAPI, or GitHub sources without adding code.
-- Parallel provider runs with `--jobs N` (default: 1).
+- Interactive provider selection with `--interactive` (checkboxes remember last selection).
+- Easy provider targeting with `--providers openai,gemini` (comma-separated list).
+- Parallel provider runs with `--jobs N` (default: 2).
+- Parallel llms.txt downloads with `--download-jobs N` (default: 4).
+- Skips existing llms docs by default; use `--force` to re-download.
 - Type-specific runners for llms, OpenAPI, and GitHub sources.
 - Zero Node/Python deps; bash + curl + rg + git (Ruby only for OpenAPI conversion).
 
@@ -24,6 +28,12 @@ cd llm-docs-sync
 
 # fetch only Gemini into ./vendor/llm-docs
 ./sync-docs.sh --output vendor/llm-docs gemini
+
+# fetch a specific set of providers (comma-separated list)
+./sync-docs.sh --providers openai,gemini --output docs
+
+# parallelize llms.txt downloads for faster runs
+./sync-docs.sh --download-jobs 8 gemini anthropic
 
 # mirror an arbitrary llms.txt without editing the repo
 ./sync-docs.sh --source https://example.com/llms.txt --provider mydocs --output docs
@@ -80,6 +90,33 @@ Run `./sync-docs.sh --list` to see all installed provider definitions.
   **digitalocean**, **railway**, **neon**, **turso**, **prisma**, **pinecone**, **retool**,
   **zapier**, **perplexity**, **elevenlabs**, **pinata**, **datadog**, **workos**, **clerk**,
   **litellm**, **crewai**: mirrored via their published `llms.txt` indexes.
+
+## Interactive mode
+Run `./sync-docs.sh --interactive` to pick providers with checkboxes. The last
+selection is saved to `.llm-docs-sync/interactive-providers.txt` so subsequent
+runs preselect your previous choices. If `whiptail` or `dialog` are unavailable,
+the script falls back to a numbered prompt.
+
+## Shell completions
+Completions include flags plus provider names from `./sync-docs.sh --list`.
+
+```bash
+# install for your current shell (auto-detected)
+./sync-docs.sh --install-completion
+
+# bash (run once per shell session)
+source completions/sync-docs.bash
+```
+
+```zsh
+# zsh (run once per shell session)
+fpath+=(/path/to/llm-docs-sync/completions)
+autoload -U compinit && compinit
+compdef _sync-docs ./sync-docs.sh sync-docs.sh
+```
+
+If the completion cannot locate the repo automatically, set `LLM_DOCS_SYNC_ROOT`
+to the repo path so provider names can be resolved.
 
 ## Ad-hoc sources
 Use `--source` to sync docs without adding provider definitions. The `--type` flag controls

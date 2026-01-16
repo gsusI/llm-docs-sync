@@ -99,6 +99,8 @@ llms_extract_urls() {
 #   strip_suffix    - suffix removed from URL-derived path (optional)
 #   out_dir         - output directory
 #   throttle        - sleep seconds between downloads (optional)
+#   download_jobs   - parallel download jobs (optional; default: 4)
+#   force           - re-download existing files (optional; default: 0)
 #
 # Environment:
 #   LLMS_CURL_BASE            - curl argv array (optional)
@@ -114,8 +116,34 @@ llms_mirror() {
   local strip_suffix="$6"
   local out_dir="$7"
   local throttle="${8:-0}"
+  local download_jobs="${9:-4}"
+  local force="${10:-0}"
 
   common_require_cmds curl mktemp rg sort
+
+  local download_pids=()
+  llms_cleanup_downloads() {
+    local pid
+    if ! declare -p download_pids >/dev/null 2>&1; then
+      return 0
+    fi
+    if [[ ${#download_pids[@]} -eq 0 ]]; then
+      return 0
+    fi
+    for pid in "${download_pids[@]}"; do
+      if kill -0 "$pid" 2>/dev/null; then
+        kill "$pid" 2>/dev/null || true
+      fi
+    done
+  }
+
+  local prev_trap_int prev_trap_term prev_trap_exit
+  prev_trap_int="$(trap -p INT || true)"
+  prev_trap_term="$(trap -p TERM || true)"
+  prev_trap_exit="$(trap -p EXIT || true)"
+  trap 'llms_cleanup_downloads; exit 130' INT
+  trap 'llms_cleanup_downloads; exit 143' TERM
+  trap 'llms_cleanup_downloads' EXIT
 
   if [[ -z "${LLMS_CURL_BASE+x}" || ${#LLMS_CURL_BASE[@]} -eq 0 ]]; then
     llms_default_curl_base
@@ -190,12 +218,23 @@ llms_mirror() {
     urls=("${urls[@]:0:$max_docs}")
   fi
 
-  local missing_file="$out_dir/missing.txt"
-  : > "$missing_file"
-  local missing_count=0
-
   local origin
   origin="$(common_url_origin "$index_url")"
+  local strip_prefix_effective="$strip_prefix"
+  if [[ -z "$strip_prefix_effective" ]]; then
+    strip_prefix_effective="$origin/"
+  fi
+
+  if ! [[ "$download_jobs" =~ ^[0-9]+$ ]] || [[ "$download_jobs" -lt 1 ]]; then
+    download_jobs="1"
+  fi
+  if [[ "$force" != "1" ]]; then
+    force="0"
+  fi
+
+  local abs_urls=()
+  local rel_paths=()
+  local dest_paths=()
 
   local url
   for url in "${urls[@]}"; do
@@ -203,15 +242,8 @@ llms_mirror() {
     abs_url="$(llms_join_url "$index_url" "$url")"
 
     local rel="$abs_url"
-
-    # Default strip_prefix when not provided: strip the origin so that output
-    # paths look like URL paths.
-    if [[ -z "$strip_prefix" ]]; then
-      strip_prefix="$origin/"
-    fi
-
-    if [[ -n "$strip_prefix" && "$rel" == "$strip_prefix"* ]]; then
-      rel="${rel#$strip_prefix}"
+    if [[ -n "$strip_prefix_effective" && "$rel" == "$strip_prefix_effective"* ]]; then
+      rel="${rel#$strip_prefix_effective}"
     fi
 
     if [[ -n "$strip_suffix" && "$rel" == *"$strip_suffix" ]]; then
@@ -223,16 +255,95 @@ llms_mirror() {
     local dest="$out_dir/$rel"
     mkdir -p "$(dirname "$dest")"
 
-    echo "[$provider] Downloading $rel"
-    if llms_fetch_with_retry "$abs_url" "$dest" "$rel" 2; then
-      if [[ -n "$throttle" && "$throttle" != "0" ]]; then
-        sleep "$throttle"
-      fi
-    else
-      echo "$rel" >> "$missing_file"
-      missing_count=$((missing_count + 1))
-    fi
+    abs_urls+=("$abs_url")
+    rel_paths+=("$rel")
+    dest_paths+=("$dest")
   done
+
+  local missing_file="$out_dir/missing.txt"
+  : > "$missing_file"
+
+  local missing_count=0
+  local skipped_count=0
+  if [[ "$download_jobs" -le 1 || ${#abs_urls[@]} -le 1 ]]; then
+    local i
+    for i in "${!abs_urls[@]}"; do
+      local abs_url="${abs_urls[$i]}"
+      local rel="${rel_paths[$i]}"
+      local dest="${dest_paths[$i]}"
+
+      if [[ "$force" != "1" && -s "$dest" ]]; then
+        skipped_count=$((skipped_count + 1))
+        continue
+      fi
+
+      echo "[$provider] Downloading $rel"
+      if llms_fetch_with_retry "$abs_url" "$dest" "$rel" 2; then
+        if [[ -n "$throttle" && "$throttle" != "0" ]]; then
+          sleep "$throttle"
+        fi
+      else
+        echo "$rel" >> "$missing_file"
+        missing_count=$((missing_count + 1))
+      fi
+    done
+  else
+    echo "[$provider] Downloading ${#abs_urls[@]} files with up to $download_jobs parallel jobs"
+    local i
+    for i in "${!abs_urls[@]}"; do
+      local abs_url="${abs_urls[$i]}"
+      local rel="${rel_paths[$i]}"
+      local dest="${dest_paths[$i]}"
+
+      if [[ "$force" != "1" && -s "$dest" ]]; then
+        skipped_count=$((skipped_count + 1))
+        continue
+      fi
+
+      (
+        echo "[$provider] Downloading $rel"
+        if llms_fetch_with_retry "$abs_url" "$dest" "$rel" 2; then
+          if [[ -n "$throttle" && "$throttle" != "0" ]]; then
+            sleep "$throttle"
+          fi
+        else
+          echo "$rel" >> "$missing_file"
+        fi
+      ) &
+
+      download_pids+=("$!")
+      if [[ ${#download_pids[@]} -ge "$download_jobs" ]]; then
+        wait "${download_pids[0]}" || true
+        download_pids=("${download_pids[@]:1}")
+      fi
+    done
+
+    if [[ ${#download_pids[@]} -gt 0 ]]; then
+      for pid in "${download_pids[@]}"; do
+        wait "$pid" || true
+      done
+    fi
+
+    if [[ -s "$missing_file" ]]; then
+      missing_count="$(wc -l < "$missing_file" | tr -d ' ')"
+    fi
+  fi
+
+  if [[ -n "$prev_trap_int" ]]; then
+    eval "$prev_trap_int"
+  else
+    trap - INT
+  fi
+  if [[ -n "$prev_trap_term" ]]; then
+    eval "$prev_trap_term"
+  else
+    trap - TERM
+  fi
+  if [[ -n "$prev_trap_exit" ]]; then
+    eval "$prev_trap_exit"
+  else
+    trap - EXIT
+  fi
 
   cp "$index_path" "$out_dir/llms.txt"
   if [[ "$full_available" == true ]]; then
@@ -251,8 +362,8 @@ llms_mirror() {
       local abs
       abs="$(llms_join_url "$index_url" "$url")"
       local rel2="$abs"
-      if [[ -n "$strip_prefix" && "$rel2" == "$strip_prefix"* ]]; then
-        rel2="${rel2#$strip_prefix}"
+      if [[ -n "$strip_prefix_effective" && "$rel2" == "$strip_prefix_effective"* ]]; then
+        rel2="${rel2#$strip_prefix_effective}"
       fi
       if [[ -n "$strip_suffix" && "$rel2" == *"$strip_suffix" ]]; then
         rel2="${rel2%"$strip_suffix"}"
@@ -268,13 +379,24 @@ llms_mirror() {
     fi
   } > "$index_md"
 
+  local total_count="${#urls[@]}"
+  local downloaded_count=$((total_count - missing_count - skipped_count))
   if [[ "$missing_count" -gt 0 ]]; then
-    echo "[$provider] Downloaded $((${#urls[@]} - missing_count)) docs into $out_dir ($missing_count missing; see missing.txt)" >&2
+    local missing_note="$missing_count missing; see missing.txt"
+    local skip_note=""
+    if [[ "$skipped_count" -gt 0 ]]; then
+      skip_note="; $skipped_count skipped"
+    fi
+    echo "[$provider] Downloaded $downloaded_count docs into $out_dir ($missing_note$skip_note)" >&2
     if [[ "${LLMS_FAIL_ON_MISSING:-}" == "1" ]]; then
       return 1
     fi
   else
     rm -f "$missing_file"
-    echo "[$provider] Downloaded ${#urls[@]} docs into $out_dir"
+    if [[ "$skipped_count" -gt 0 ]]; then
+      echo "[$provider] Downloaded $downloaded_count docs into $out_dir ($skipped_count skipped)"
+    else
+      echo "[$provider] Downloaded $downloaded_count docs into $out_dir"
+    fi
   fi
 }

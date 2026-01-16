@@ -19,6 +19,8 @@ Options (source mode):
   --strip-prefix PREFIX   llms: strip prefix
   --strip-suffix SUFFIX   llms: strip suffix
   --throttle-seconds S    llms: sleep between downloads
+  --download-jobs N       llms: parallel download jobs (default: 4)
+  --force                llms: re-download even if the file exists
   --token TOKEN           llms: bearer token
   --header 'K: V'         llms: additional header (repeatable)
 
@@ -47,6 +49,8 @@ FULL_INDEX_URL=""
 STRIP_PREFIX=""
 STRIP_SUFFIX=""
 THROTTLE_SECONDS=""
+DOWNLOAD_JOBS=""
+FORCE="0"
 TOKEN=""
 HEADERS=()
 
@@ -84,6 +88,10 @@ while [[ $# -gt 0 ]]; do
       STRIP_SUFFIX="${2:-}"; shift 2 ;;
     --throttle-seconds)
       THROTTLE_SECONDS="${2:-}"; shift 2 ;;
+    --download-jobs)
+      DOWNLOAD_JOBS="${2:-}"; shift 2 ;;
+    --force)
+      FORCE="1"; shift ;;
     --token)
       TOKEN="${2:-}"; shift 2 ;;
     --header)
@@ -187,6 +195,8 @@ run_llms() {
   [[ -n "$STRIP_PREFIX" ]] && args+=(--strip-prefix "$STRIP_PREFIX")
   [[ -n "$STRIP_SUFFIX" ]] && args+=(--strip-suffix "$STRIP_SUFFIX")
   [[ -n "$THROTTLE_SECONDS" ]] && args+=(--throttle-seconds "$THROTTLE_SECONDS")
+  [[ -n "$DOWNLOAD_JOBS" ]] && args+=(--download-jobs "$DOWNLOAD_JOBS")
+  [[ "$FORCE" == "1" ]] && args+=(--force)
   [[ -n "$TOKEN" ]] && args+=(--token "$TOKEN")
 
   if [[ ${#HEADERS[@]} -gt 0 ]]; then
@@ -278,6 +288,8 @@ if [[ -z "$PROVIDER" ]]; then
   exit 1
 fi
 
+CLI_DOWNLOAD_JOBS="$DOWNLOAD_JOBS"
+
 DEF_FILE="$SCRIPT_DIR/defs/$PROVIDER.sh"
 if [[ ! -f "$DEF_FILE" ]]; then
   common_die "Unknown provider: $PROVIDER (missing $DEF_FILE)"
@@ -291,6 +303,7 @@ PATTERN=""
 STRIP_PREFIX=""
 STRIP_SUFFIX=""
 THROTTLE_SECONDS=""
+DOWNLOAD_JOBS=""
 TOKEN=""
 HEADERS=()
 SPEC_URL=""
@@ -307,6 +320,10 @@ source "$DEF_FILE"
 
 if [[ -z "${TYPE:-}" ]]; then
   common_die "Provider definition did not set TYPE: $DEF_FILE"
+fi
+
+if [[ -n "$CLI_DOWNLOAD_JOBS" ]]; then
+  DOWNLOAD_JOBS="$CLI_DOWNLOAD_JOBS"
 fi
 
 case "$TYPE" in

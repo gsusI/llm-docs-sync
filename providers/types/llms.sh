@@ -16,6 +16,8 @@ Options:
   --strip-prefix PREFIX      Prefix stripped from URL to form output path
   --strip-suffix SUFFIX      Suffix stripped from URL-derived path (e.g. '.txt')
   --throttle-seconds SECONDS Sleep between downloads (default: 0.1)
+  --download-jobs N          Parallel downloads for llms docs (default: 4)
+  --force                    Re-download even if the file exists
   --token TOKEN              Adds 'Authorization: Bearer TOKEN' header
   --header 'K: V'            Adds an arbitrary header (repeatable)
   --include-full-index       Union in llms-full.txt results too
@@ -32,6 +34,8 @@ PATTERN=""
 STRIP_PREFIX=""
 STRIP_SUFFIX=""
 THROTTLE_SECONDS="0.1"
+DOWNLOAD_JOBS="${LLMS_DOWNLOAD_JOBS:-4}"
+FORCE="0"
 TOKEN=""
 HEADERS=()
 INCLUDE_FULL_INDEX="0"
@@ -56,6 +60,10 @@ while [[ $# -gt 0 ]]; do
       STRIP_SUFFIX="${2:-}"; shift 2 ;;
     --throttle-seconds)
       THROTTLE_SECONDS="${2:-0}"; shift 2 ;;
+    --download-jobs)
+      DOWNLOAD_JOBS="${2:-}"; shift 2 ;;
+    --force)
+      FORCE="1"; shift ;;
     --token)
       TOKEN="${2:-}"; shift 2 ;;
     --header)
@@ -75,6 +83,11 @@ done
 
 if [[ -z "$PROVIDER" || -z "$OUT_DIR" || -z "$INDEX_URL" ]]; then
   usage
+  exit 1
+fi
+
+if ! [[ "$DOWNLOAD_JOBS" =~ ^[0-9]+$ ]] || [[ "$DOWNLOAD_JOBS" -lt 1 ]]; then
+  echo "--download-jobs must be a positive integer" >&2
   exit 1
 fi
 
@@ -110,4 +123,4 @@ if [[ -n "$MAX_DOCS" ]]; then
   export LLMS_MAX_DOCS="$MAX_DOCS"
 fi
 
-llms_mirror "$PROVIDER" "$INDEX_URL" "$FULL_INDEX_URL" "$PATTERN" "$STRIP_PREFIX" "$STRIP_SUFFIX" "$OUT_DIR" "$THROTTLE_SECONDS"
+llms_mirror "$PROVIDER" "$INDEX_URL" "$FULL_INDEX_URL" "$PATTERN" "$STRIP_PREFIX" "$STRIP_SUFFIX" "$OUT_DIR" "$THROTTLE_SECONDS" "$DOWNLOAD_JOBS" "$FORCE"

@@ -1,0 +1,125 @@
+#compdef sync-docs.sh
+
+_sync_docs_root() {
+  local root=""
+  if [[ -n ${LLM_DOCS_SYNC_ROOT:-} && -x ${LLM_DOCS_SYNC_ROOT}/sync-docs.sh ]]; then
+    print -r -- "$LLM_DOCS_SYNC_ROOT"
+    return
+  fi
+
+  local cmd=${words[1]}
+  if [[ "$cmd" == */* ]]; then
+    root="${cmd:a:h}"
+  else
+    local resolved
+    resolved="$(command -v "$cmd" 2>/dev/null)"
+    if [[ -n "$resolved" ]]; then
+      root="${resolved:a:h}"
+    fi
+  fi
+
+  if [[ -n "$root" ]]; then
+    print -r -- "$root"
+  fi
+}
+
+_sync_docs_list_providers() {
+  local root
+  root="$(_sync_docs_root)"
+  if [[ -n "$root" && -x "$root/sync-docs.sh" ]]; then
+    "$root/sync-docs.sh" --list 2>/dev/null
+    return
+  fi
+
+  if [[ -n "$root" && -d "$root/providers/defs" ]]; then
+    (cd "$root/providers/defs" && ls -1 *.sh 2>/dev/null | sed 's/[.]sh$//')
+  fi
+}
+
+_sync_docs_provider() {
+  local -a providers
+  local -a matches
+  local cur="${PREFIX}"
+
+  providers=(${(f)"$(_sync_docs_list_providers)"})
+  local item
+  for item in "${providers[@]}"; do
+    if [[ -n "$cur" && "$item" != ${cur}* ]]; then
+      continue
+    fi
+    matches+=("$item")
+  done
+
+  if [[ ${#matches[@]} -gt 0 ]]; then
+    compadd -Q -a matches
+  fi
+}
+
+_sync_docs_providers() {
+  local -a providers
+  local -a matches used
+  local prefix="${PREFIX}"
+  local base=""
+  local cur="$prefix"
+
+  if [[ "$prefix" == *","* ]]; then
+    base="${prefix%,*},"
+    cur="${prefix##*,}"
+    used=(${(s:,:)${prefix%,*}})
+  fi
+
+  providers=(${(f)"$(_sync_docs_list_providers)"})
+  local item
+  for item in "${providers[@]}"; do
+    if [[ -n "$cur" && "$item" != ${cur}* ]]; then
+      continue
+    fi
+    if (( ${used[(I)$item]} )); then
+      continue
+    fi
+    matches+=("$item")
+  done
+
+  if [[ ${#matches[@]} -gt 0 ]]; then
+    if [[ -n "$base" ]]; then
+      compadd -Q -P "$base" -a matches
+    else
+      compadd -Q -a matches
+    fi
+  fi
+}
+
+_arguments -s \
+  '--output[output directory]:directory:_files -/' \
+  '--jobs[parallel provider jobs]:jobs:' \
+  '--download-jobs[parallel llms downloads]:jobs:' \
+  '--force[re-download existing llms docs]' \
+  '--providers[comma-separated providers]:providers:_sync_docs_providers' \
+  '--version-label[label]:' \
+  '--timestamp-label[use timestamp label]' \
+  '--latest-alias[alias name]:' \
+  '--keep-going[continue on error]' \
+  '--source[source URL]:' \
+  '--provider[override provider name]:provider:_sync_docs_provider' \
+  '--type[source type]:type:(auto llms openapi github)' \
+  '--pattern[llms link regex]:' \
+  '--full-index-url[llms full index URL]:' \
+  '--strip-prefix[llms strip prefix]:' \
+  '--strip-suffix[llms strip suffix]:' \
+  '--throttle-seconds[llms sleep between downloads]:' \
+  '--token[bearer token]:' \
+  '--header[extra header]:' \
+  '--spec-url[openapi spec URL]:' \
+  '--fallback-spec-url[openapi fallback spec URL]:' \
+  '--spec-regex[openapi spec regex]:' \
+  '--title[openapi title]:' \
+  '--repo-url[github repo URL]:' \
+  '--branch[github branch]:' \
+  '--docs-path[github docs path]:' \
+  '--mode[github mode]:(copy concat)' \
+  '--interactive[interactive selection]' \
+  '--list[list providers]' \
+  '--install-completion[install shell completion]:shell:(auto bash zsh zs all)' \
+  '--install-completions[install shell completion]:shell:(auto bash zsh zs all)' \
+  '--help[show help]' \
+  '*:provider:_sync_docs_provider'

@@ -1,8 +1,13 @@
 # build artifacts
 *.log
 *.tmp
+llm-docs-sync.zip
+llm-docs-sync-refactor.zip
 
 # fetched docs
 /docs/
 openai-api-docs/
 gemini-api-docs/
+
+# interactive state
+.llm-docs-sync/
