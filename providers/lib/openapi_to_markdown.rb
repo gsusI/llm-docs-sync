@@ -1,97 +1,30 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env ruby
+# frozen_string_literal: true
 
-usage() {
-  cat <<'USAGE'
-Usage: providers/openai.sh [--output DIR] [--index-url URL] [--spec-url URL]
-
-Fetch the OpenAI API reference by reading the OpenAI llms.txt index to find the
-OpenAPI spec, then generate Markdown reference files into the output directory.
-USAGE
-}
-
-OUTPUT_DIR="openai-api-docs"
-INDEX_URL="https://platform.openai.com/llms.txt"
-SPEC_URL=""
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --output)
-      OUTPUT_DIR="${2:-}"
-      shift 2
-      ;;
-    --index-url)
-      INDEX_URL="${2:-}"
-      shift 2
-      ;;
-    --spec-url)
-      SPEC_URL="${2:-}"
-      shift 2
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      usage
-      exit 1
-      ;;
-  esac
-done
-
-for cmd in curl mktemp rg ruby sort head; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "Missing required command: $cmd" >&2
-    exit 1
-  fi
-done
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-
-if [[ "$OUTPUT_DIR" = /* ]]; then
-  OUT_DIR="$OUTPUT_DIR"
-else
-  OUT_DIR="$ROOT_DIR/$OUTPUT_DIR"
-fi
-
-WORKDIR="$(mktemp -d)"
-cleanup() { rm -rf "$WORKDIR"; }
-trap cleanup EXIT
-
-echo "[openai] Downloading llms.txt index from $INDEX_URL"
-CURL_BASE=(curl -fsSL --retry 3 --retry-delay 1 --retry-connrefused --http1.1)
-"${CURL_BASE[@]}" "$INDEX_URL" -o "$WORKDIR/llms.txt"
-
-if [[ -z "$SPEC_URL" ]]; then
-  SPEC_URL="$(rg -o "https://platform.openai.com/docs/static/api-definition\\.ya?ml" "$WORKDIR/llms.txt" | head -n 1 || true)"
-fi
-
-if [[ -z "$SPEC_URL" ]]; then
-  SPEC_URL="https://platform.openai.com/docs/static/api-definition.yaml"
-fi
-
-echo "[openai] Downloading OpenAPI spec from $SPEC_URL"
-"${CURL_BASE[@]}" "$SPEC_URL" -o "$WORKDIR/api-definition.yaml"
-
-timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-mkdir -p "$OUT_DIR"
-
-CONVERTER="$WORKDIR/convert-openai-api.rb"
-cat > "$CONVERTER" <<'RUBY'
 require "yaml"
 require "fileutils"
 require "date"
 
-spec_path, out_dir, source_url, generated_at = ARGV
+spec_path, out_dir, source_url, generated_at, title = ARGV
+
+unless spec_path && out_dir && source_url && generated_at
+  warn "Usage: openapi_to_markdown.rb SPEC_PATH OUT_DIR SOURCE_URL GENERATED_AT [TITLE]"
+  exit 2
+end
+
+raw = File.read(spec_path)
+
+# YAML parser can read JSON too.
 spec = YAML.safe_load(
-  File.read(spec_path),
+  raw,
   aliases: true,
   permitted_classes: [Date, Time]
 )
 
 info = spec["info"] || {}
 paths = spec["paths"] || {}
+
+title ||= info["title"] || "OpenAPI reference"
 
 HTTP_METHODS = %w[get put post delete patch options head trace].freeze
 
@@ -101,13 +34,14 @@ def slugify(value)
 end
 
 def titleize(value)
-  value.to_s.split(/[_-]/).map { |part| part.capitalize }.join(" ")
+  value.to_s.split(/[_\-\s]+/).reject(&:empty?).map { |part| part[0].to_s.upcase + part[1..].to_s }.join(" ")
 end
 
 def deref(spec, obj)
   return obj unless obj.is_a?(Hash) && obj["$ref"].is_a?(String)
   ref = obj["$ref"]
   return obj unless ref.start_with?("#/")
+
   ref.split("/")[1..].reduce(spec) do |acc, key|
     acc.is_a?(Hash) ? acc[key] : nil
   end || obj
@@ -118,15 +52,18 @@ def schema_label(schema)
   return "ref: #{schema["$ref"].split("/").last}" if schema["$ref"]
 
   if schema["oneOf"]
-    return "oneOf: " + schema["oneOf"].map { |entry| schema_label(entry) }.reject(&:empty?).join(", ")
+    labels = schema["oneOf"].map { |entry| schema_label(entry) }.reject(&:empty?)
+    return labels.empty? ? "oneOf" : "oneOf: #{labels.join(", ")}" 
   end
 
   if schema["anyOf"]
-    return "anyOf: " + schema["anyOf"].map { |entry| schema_label(entry) }.reject(&:empty?).join(", ")
+    labels = schema["anyOf"].map { |entry| schema_label(entry) }.reject(&:empty?)
+    return labels.empty? ? "anyOf" : "anyOf: #{labels.join(", ")}" 
   end
 
   if schema["allOf"]
-    return "allOf: " + schema["allOf"].map { |entry| schema_label(entry) }.reject(&:empty?).join(", ")
+    labels = schema["allOf"].map { |entry| schema_label(entry) }.reject(&:empty?)
+    return labels.empty? ? "allOf" : "allOf: #{labels.join(", ")}" 
   end
 
   type = schema["type"]
@@ -152,10 +89,16 @@ def format_description(text)
   text.to_s.strip
 end
 
+def default_group_for_path(path)
+  seg = path.to_s.split("/").reject(&:empty?).first
+  seg.nil? || seg.empty? ? "misc" : seg
+end
+
 operations = []
 
 paths.each do |path, path_item|
   next unless path_item.is_a?(Hash)
+
   path_params = path_item["parameters"] || []
 
   path_item.each do |method, op|
@@ -163,8 +106,12 @@ paths.each do |path, path_item|
     next unless op.is_a?(Hash)
 
     meta = op["x-oaiMeta"] || {}
-    group = meta["group"] || (op["tags"] && op["tags"].first) || "misc"
-    name = meta["name"] || op["summary"] || "#{method.upcase} #{path}"
+    tags = op["tags"].is_a?(Array) ? op["tags"] : []
+
+    group = meta["group"] || tags.first || default_group_for_path(path)
+
+    name = meta["name"] || op["summary"] || op["operationId"] || "#{method.upcase} #{path}"
+
     params = (path_params + (op["parameters"] || [])).uniq do |param|
       if param.is_a?(Hash)
         [param["name"], param["in"], param["$ref"]]
@@ -180,20 +127,19 @@ paths.each do |path, path_item|
       path: path,
       op: op,
       meta: meta,
-      params: params,
-      path_item: path_item
+      params: params
     }
   end
 end
 
 groups = operations.group_by { |operation| operation[:group].to_s }
 
-groups_dir = File.join(out_dir, "groups")
-FileUtils.mkdir_p(groups_dir)
+out_groups_dir = File.join(out_dir, "groups")
+FileUtils.mkdir_p(out_groups_dir)
 
 index_path = File.join(out_dir, "index.md")
 File.open(index_path, "w") do |file|
-  file.puts "# OpenAI API reference"
+  file.puts "# #{title}"
   file.puts "Source: #{source_url}"
   file.puts "Generated: #{generated_at}"
   file.puts "OpenAPI: #{spec["openapi"]}" if spec["openapi"]
@@ -202,19 +148,19 @@ File.open(index_path, "w") do |file|
   file.puts "## Groups"
   groups.keys.sort.each do |group|
     slug = slugify(group)
-    title = titleize(group)
+    display = titleize(group)
     count = groups[group].length
-    file.puts "- [#{title}](groups/#{slug}.md) (#{count} operations)"
+    file.puts "- [#{display}](groups/#{slug}.md) (#{count} operations)"
   end
 end
 
 groups.each do |group, ops|
   slug = slugify(group)
-  title = titleize(group)
-  path = File.join(groups_dir, "#{slug}.md")
+  display = titleize(group)
+  path = File.join(out_groups_dir, "#{slug}.md")
 
   File.open(path, "w") do |file|
-    file.puts "# #{title}"
+    file.puts "# #{display}"
     file.puts "Source: #{source_url}"
     file.puts "Generated: #{generated_at}"
     file.puts
@@ -262,6 +208,7 @@ groups.each do |group, ops|
           required = param_obj["required"] ? "required" : "optional"
           schema = schema_label(param_obj["schema"])
           description = format_description(param_obj["description"])
+
           line = "- `#{name}` (#{location}, #{required})"
           line += " `#{schema}`" unless schema.to_s.empty?
           line += ": #{description}" unless description.empty?
@@ -290,9 +237,9 @@ groups.each do |group, ops|
         file.puts "### Responses"
         responses.keys.sort.each do |status|
           response = deref(spec, responses[status]) || {}
-          description = format_description(response["description"])
+          desc = format_description(response["description"])
           line = "- `#{status}`"
-          line += ": #{description}" unless description.empty?
+          line += ": #{desc}" unless desc.empty?
 
           content = response["content"] || {}
           if content.any?
@@ -307,6 +254,7 @@ groups.each do |group, ops|
         end
       end
 
+      # OpenAI-style vendor examples; harmless when absent.
       examples = meta["examples"]
       request_examples = nil
       response_example = nil
@@ -357,8 +305,3 @@ groups.each do |group, ops|
     end
   end
 end
-RUBY
-
-ruby "$CONVERTER" "$WORKDIR/api-definition.yaml" "$OUT_DIR" "$SPEC_URL" "$timestamp"
-
-echo "[openai] Wrote API reference into $OUT_DIR"

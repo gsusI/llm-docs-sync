@@ -1,14 +1,17 @@
 # LLM Docs Sync
 
 Dependency-light scripts that vendor official docs into your project so local tools
-and RAG jobs can ingest them offline (OpenAI, Gemini, Anthropic, Hugging Face, OpenRouter, Cohere, Mistral, and a bunch of provider mirrors like Supabase/Groq/Stripe/Cloudflare/etc., plus Next.js).
+and RAG jobs can ingest them offline (OpenAI, Gemini, Anthropic, Hugging Face,
+OpenRouter, Cohere, Mistral, Next.js, and a bunch of provider mirrors like
+Supabase/Groq/Stripe/Cloudflare/etc.).
 
 ## Features
 - Deterministic, idempotent fetches (no timestamps unless you opt in with `--version-label`).
-- Markdown output organized per provider for easy ingestion.
-- Zero Node/Python deps; only shell + curl + rg + (Ruby for OpenAI conversion).
-- Extensible: providers are registered in `providers/registry.sh` and dispatched through one generic runner.
-- Ad-hoc: pass `--llms-provider name index_url ...` to mirror any new `llms.txt` without touching the codebase.
+- Provider definitions live in `providers/defs/*.sh` and are dispatched via `providers/run.sh`.
+- Ad-hoc `--source` mode for llms.txt, OpenAPI, or GitHub sources without adding code.
+- Parallel provider runs with `--jobs N` (default: 1).
+- Type-specific runners for llms, OpenAPI, and GitHub sources.
+- Zero Node/Python deps; bash + curl + rg + git (Ruby only for OpenAPI conversion).
 
 ## Quick start
 ```bash
@@ -23,7 +26,10 @@ cd llm-docs-sync
 ./sync-docs.sh --output vendor/llm-docs gemini
 
 # mirror an arbitrary llms.txt without editing the repo
-./sync-docs.sh --llms-provider mydocs https://example.com/llms.txt --output docs
+./sync-docs.sh --source https://example.com/llms.txt --provider mydocs --output docs
+
+# pull docs from a GitHub repo
+./sync-docs.sh --source https://github.com/vercel/next.js.git --type github --docs-path docs --mode concat --output docs --provider nextjs
 
 # interactive prompts for output + providers
 ./sync-docs.sh --interactive
@@ -36,49 +42,74 @@ HF_TOKEN=hf_xxx ./sync-docs.sh huggingface
 ```
 
 Outputs land under `<output>/<provider>/`. Examples:
-- `docs/openai/index.md` + `docs/openai/groups/*.md` generated from OpenAI’s OpenAPI spec.
-- `docs/gemini/docs/*.md` mirrored from Gemini’s published markdown twins.
-- `docs/anthropic/en/*.md` mirrored from Anthropic’s published Markdown docs (llms.txt-driven).
+- `docs/openai/index.md` + `docs/openai/groups/*.md` generated from OpenAI's OpenAPI spec.
+- `docs/gemini/docs/*.md` mirrored from Gemini's published markdown twins.
+- `docs/anthropic/en/*.md` mirrored from Anthropic's published Markdown docs (llms.txt-driven).
 - `docs/huggingface/hub/*.md` mirrored from Hugging Face Hub docs (llms.txt-driven).
 - `docs/openrouter/*.mdx` mirrored from OpenRouter docs (llms.txt-driven).
 - `docs/cohere/*.mdx` mirrored from Cohere docs (llms.txt-driven).
 - `docs/mistral/*.md` mirrored from Mistral docs (llms.txt-driven).
-- Additional mirrors supported: Supabase, Groq, xAI, Stripe, Cloudflare, Netlify, Twilio, DigitalOcean, Railway, Neon, Turso, Prisma, Pinecone, Retool, Zapier, Perplexity, ElevenLabs, Pinata, Datadog, WorkOS, Clerk, LiteLLM, CrewAI (all via llms.txt).
-- `docs/manifest.json` records provider, path, label, and fetch timestamp.
+- `docs/nextjs/index.md` concatenated from the Next.js GitHub docs tree.
+- Additional mirrors supported: Supabase, Groq, xAI, Stripe, Cloudflare, Netlify, Twilio,
+  DigitalOcean, Railway, Neon, Turso, Prisma, Pinecone, Retool, Zapier, Perplexity,
+  ElevenLabs, Pinata, Datadog, WorkOS, Clerk, LiteLLM, CrewAI (all via llms.txt).
+- `docs/manifest.json` records provider, path, label, timestamp, and status.
 
 ## Providers
-- **openai**: Reads `https://platform.openai.com/llms.txt` to locate the OpenAPI spec, then renders Markdown reference grouped by operation tags.
-- **gemini**: Reads `https://ai.google.dev/gemini-api/docs/llms.txt` and mirrors the linked `*.md.txt` docs.
-- **anthropic**: Reads `https://platform.claude.com/llms.txt` (and `llms-full.txt` when available), then mirrors the linked Markdown docs. Use `--lang all` to pull all localized paths.
-- **huggingface**: Reads `https://huggingface.co/docs/hub/llms.txt` (and `llms-full.txt` when available) and mirrors the linked Hub Markdown docs. Large runs may require a Hugging Face token: `HF_TOKEN=... ./sync-docs.sh huggingface`.
-- **openrouter**: Reads `https://openrouter.ai/docs/llms.txt` (and `llms-full.txt` when available) and mirrors the linked `.md`/`.mdx` docs.
-- **cohere**: Reads `https://docs.cohere.com/llms.txt` (and `llms-full.txt` when available) and mirrors the linked `.md`/`.mdx` docs.
-- **mistral**: Reads `https://docs.mistral.ai/llms.txt` (and `llms-full.txt` when available) and mirrors the linked `.md`/`.mdx` docs.
-- **supabase**, **groq**, **xai**, **stripe**, **cloudflare**, **netlify**, **twilio**, **digitalocean**, **railway**, **neon**, **turso**, **prisma**, **pinecone**, **retool**, **zapier**, **perplexity**, **elevenlabs**, **pinata**, **datadog**, **workos**, **clerk**, **litellm**, **crewai**: mirrored via their published `llms.txt` indexes with a generic mirror.
-- **nextjs**: Clones the Next.js repo docs directory (default branch `canary`) and concatenates all `*.md`/`*.mdx` into a single `index.md`. Pass `--branch <tag-or-branch>` to target a specific release (e.g., `--branch v14.2.3`) and set `--output` to a versioned folder, e.g., `--output docs/nextjs-14.2.3`.
+Run `./sync-docs.sh --list` to see all installed provider definitions.
 
-Adding a provider:
-- For llms.txt-driven docs, either (a) run ad-hoc via `--llms-provider name <index_url> [full_index_url] [strip_prefix] [strip_suffix]`, or (b) add a `register_llms` entry in `providers/registry.sh` to make it first-class.
-- For custom flows, drop `providers/<name>.sh` and register it with `register_custom` in `providers/registry.sh`.
+- **openai**: Reads `https://platform.openai.com/llms.txt` to locate the OpenAPI spec,
+  then renders Markdown reference grouped by operation tags.
+- **gemini**: Reads `https://ai.google.dev/gemini-api/docs/llms.txt` and mirrors the linked
+  `*.md.txt` docs.
+- **anthropic**: Reads `https://platform.claude.com/llms.txt` (and `llms-full.txt` when
+  available), then mirrors the linked Markdown docs. Use `ANTHROPIC_LANG=all` to pull all
+  localized paths.
+- **huggingface**: Reads `https://huggingface.co/docs/hub/llms.txt` (and `llms-full.txt`
+  when available) and mirrors the linked Hub Markdown docs. Large runs may require a token:
+  `HF_TOKEN=... ./sync-docs.sh huggingface`.
+- **openrouter**: Reads `https://openrouter.ai/docs/llms.txt` (and `llms-full.txt` when
+  available) and mirrors the linked `.md`/`.mdx` docs.
+- **cohere**: Reads `https://docs.cohere.com/llms.txt` (and `llms-full.txt` when available)
+  and mirrors the linked `.md`/`.mdx` docs.
+- **mistral**: Reads `https://docs.mistral.ai/llms.txt` (and `llms-full.txt` when available)
+  and mirrors the linked `.md`/`.mdx` docs.
+- **nextjs**: Pulls docs from the Next.js repo (default branch `canary`) and concatenates
+  all `*.md`/`*.mdx` into a single `index.md`. Override with `NEXTJS_BRANCH=...`.
+- **supabase**, **groq**, **xai**, **stripe**, **cloudflare**, **netlify**, **twilio**,
+  **digitalocean**, **railway**, **neon**, **turso**, **prisma**, **pinecone**, **retool**,
+  **zapier**, **perplexity**, **elevenlabs**, **pinata**, **datadog**, **workos**, **clerk**,
+  **litellm**, **crewai**: mirrored via their published `llms.txt` indexes.
+
+## Ad-hoc sources
+Use `--source` to sync docs without adding provider definitions. The `--type` flag controls
+how the source is processed (default: `auto`). Some examples:
+
+```bash
+# llms.txt mirror
+./sync-docs.sh --source https://example.com/llms.txt --provider example --output docs
+
+# OpenAPI spec direct
+./sync-docs.sh --source https://example.com/openapi.yaml --type openapi --provider example-api --output docs
+
+# GitHub docs
+./sync-docs.sh --source https://github.com/org/repo.git --type github --docs-path docs --mode copy --provider repo-docs --output docs
+```
+
+See `providers/run.sh --help` for all source-mode options.
 
 ## Requirements
-- bash, curl, rg (ripgrep), sort, mktemp
-- Ruby (only for OpenAI conversion)
+- bash, curl, rg (ripgrep), sort, mktemp, git
+- Ruby (only for OpenAPI conversion)
 
 ## Repo layout
-- `sync-docs.sh` — entrypoint that dispatches to providers (and accepts ad-hoc `--llms-provider`).
-- `providers/registry.sh` — declarative list of providers and how to call them.
-- `providers/openai.sh` — fetches OpenAI spec + generates Markdown groups.
-- `providers/gemini.sh` — mirrors Gemini Markdown twins.
-- `providers/anthropic.sh` — mirrors Anthropic/Claude Markdown docs via llms.txt.
-- `providers/huggingface.sh` — mirrors Hugging Face Hub docs via llms.txt.
-- `providers/openrouter.sh` — mirrors OpenRouter docs via llms.txt.
-- `providers/cohere.sh` — mirrors Cohere docs via llms.txt.
-- `providers/mistral.sh` — mirrors Mistral docs via llms.txt.
-- `providers/generic-llms.sh` — generic llms.txt mirror used by Supabase/Groq/xAI/Stripe/Cloudflare/etc.
-- `providers/nextjs.sh` — clones/concats Next.js docs for a branch or tag.
-- `docs/` (ignored) — default output target when you run the scripts.
-- `docs/manifest.json` — auto-written manifest describing each sync run.
+- `sync-docs.sh` - entrypoint that dispatches to providers and handles `--source`.
+- `providers/run.sh` - resolves providers and routes to type handlers.
+- `providers/defs/*.sh` - declarative provider definitions.
+- `providers/types/*.sh` - type handlers (`llms`, `openapi`, `github`).
+- `providers/lib/*` - shared utilities and OpenAPI-to-Markdown converter.
+- `docs/` (ignored) - default output target when you run the scripts.
+- `docs/manifest.json` - auto-written manifest describing each sync run.
 
 ## Versioned layout (recommended)
 Run with `--version-label <label>` or `--timestamp-label` to nest outputs under
@@ -87,10 +118,16 @@ Run with `--version-label <label>` or `--timestamp-label` to nest outputs under
 while preserving a stable path for ingestion tools.
 
 ## Extending to new providers
-1. For llms.txt sources, prefer `register_llms` in `providers/registry.sh` (or use `--llms-provider` for ad-hoc runs).
-2. For custom flows, create `providers/<name>.sh` that writes docs into the given `--output` dir and register it with `register_custom` in `providers/registry.sh`.
-3. Keep it dependency-light (curl/rg preferred) and document flags in `usage()`.
-4. Open a PR with a short note in README if you add flags or providers.
+1. For llms.txt sources, add a `providers/defs/<name>.sh` with `TYPE="llms"` and
+   `INDEX_URL`, plus optional `FULL_INDEX_URL`, `PATTERN`, `STRIP_PREFIX`, `STRIP_SUFFIX`,
+   `THROTTLE_SECONDS`, `TOKEN`, or `HEADERS`.
+2. For OpenAPI sources, set `TYPE="openapi"` and provide `SPEC_URL` or `INDEX_URL` with
+   optional `SPEC_REGEX`/`FALLBACK_SPEC_URL`/`TITLE`.
+3. For GitHub sources, set `TYPE="github"` and provide `REPO_URL` plus optional
+   `BRANCH`, `DOCS_PATH`, and `MODE`.
+4. For a new flow type, add a handler under `providers/types/<type>.sh` and wire it into
+   `providers/run.sh`, then define `TYPE="<type>"` in your provider def.
+5. Update README with a one-liner about the provider.
 
 ## TODO / providers welcome
 - AWS Bedrock (direct)
@@ -101,7 +138,8 @@ while preserving a stable path for ingestion tools.
 - Vercel AI SDK / LangChain / LlamaIndex doc mirrors
 
 ## Contributing
-See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome! Please keep scripts readable, small, and well-commented where non-obvious.
+See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome! Please keep scripts readable, small,
+and well-commented where non-obvious.
 
 ## License
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).
