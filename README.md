@@ -4,10 +4,11 @@ Dependency-light scripts that vendor official docs into your project so local to
 and RAG jobs can ingest them offline (OpenAI, Gemini, Anthropic, Hugging Face, OpenRouter, Cohere, Mistral, and a bunch of provider mirrors like Supabase/Groq/Stripe/Cloudflare/etc., plus Next.js).
 
 ## Features
-- Deterministic, idempotent fetches from each provider’s `llms.txt` index.
+- Deterministic, idempotent fetches (no timestamps unless you opt in with `--version-label`).
 - Markdown output organized per provider for easy ingestion.
 - Zero Node/Python deps; only shell + curl + rg + (Ruby for OpenAI conversion).
-- Extensible: drop in `providers/<name>.sh`, add a single case, ship it.
+- Extensible: providers are registered in `providers/registry.sh` and dispatched through one generic runner.
+- Ad-hoc: pass `--llms-provider name index_url ...` to mirror any new `llms.txt` without touching the codebase.
 
 ## Quick start
 ```bash
@@ -20,6 +21,9 @@ cd llm-docs-sync
 
 # fetch only Gemini into ./vendor/llm-docs
 ./sync-docs.sh --output vendor/llm-docs gemini
+
+# mirror an arbitrary llms.txt without editing the repo
+./sync-docs.sh --llms-provider mydocs https://example.com/llms.txt --output docs
 
 # interactive prompts for output + providers
 ./sync-docs.sh --interactive
@@ -53,14 +57,17 @@ Outputs land under `<output>/<provider>/`. Examples:
 - **supabase**, **groq**, **xai**, **stripe**, **cloudflare**, **netlify**, **twilio**, **digitalocean**, **railway**, **neon**, **turso**, **prisma**, **pinecone**, **retool**, **zapier**, **perplexity**, **elevenlabs**, **pinata**, **datadog**, **workos**, **clerk**, **litellm**, **crewai**: mirrored via their published `llms.txt` indexes with a generic mirror.
 - **nextjs**: Clones the Next.js repo docs directory (default branch `canary`) and concatenates all `*.md`/`*.mdx` into a single `index.md`. Pass `--branch <tag-or-branch>` to target a specific release (e.g., `--branch v14.2.3`) and set `--output` to a versioned folder, e.g., `--output docs/nextjs-14.2.3`.
 
-Adding a provider = drop `providers/<name>.sh` and wire a case entry in `sync-docs.sh`.
+Adding a provider:
+- For llms.txt-driven docs, either (a) run ad-hoc via `--llms-provider name <index_url> [full_index_url] [strip_prefix] [strip_suffix]`, or (b) add a `register_llms` entry in `providers/registry.sh` to make it first-class.
+- For custom flows, drop `providers/<name>.sh` and register it with `register_custom` in `providers/registry.sh`.
 
 ## Requirements
 - bash, curl, rg (ripgrep), sort, mktemp
 - Ruby (only for OpenAI conversion)
 
 ## Repo layout
-- `sync-docs.sh` — entrypoint that dispatches to providers.
+- `sync-docs.sh` — entrypoint that dispatches to providers (and accepts ad-hoc `--llms-provider`).
+- `providers/registry.sh` — declarative list of providers and how to call them.
 - `providers/openai.sh` — fetches OpenAI spec + generates Markdown groups.
 - `providers/gemini.sh` — mirrors Gemini Markdown twins.
 - `providers/anthropic.sh` — mirrors Anthropic/Claude Markdown docs via llms.txt.
@@ -80,16 +87,18 @@ Run with `--version-label <label>` or `--timestamp-label` to nest outputs under
 while preserving a stable path for ingestion tools.
 
 ## Extending to new providers
-1. Create `providers/<name>.sh` that writes docs into the given `--output` dir.
-2. Add a `case` branch in `sync-docs.sh` to invoke it.
+1. For llms.txt sources, prefer `register_llms` in `providers/registry.sh` (or use `--llms-provider` for ad-hoc runs).
+2. For custom flows, create `providers/<name>.sh` that writes docs into the given `--output` dir and register it with `register_custom` in `providers/registry.sh`.
 3. Keep it dependency-light (curl/rg preferred) and document flags in `usage()`.
 4. Open a PR with a short note in README if you add flags or providers.
 
 ## TODO / providers welcome
-- Hugging Face Inference API
 - AWS Bedrock (direct)
-- Azure OpenAI
+- Azure OpenAI / Azure AI Foundry
 - Google Vertex AI
+- Hugging Face Inference API
+- Meta Llama docs (official site once available)
+- Vercel AI SDK / LangChain / LlamaIndex doc mirrors
 
 ## Contributing
 See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome! Please keep scripts readable, small, and well-commented where non-obvious.

@@ -30,9 +30,12 @@ cd llm-docs-sync
 - `.gitignore` ignores fetched docs; don’t commit generated docs.
 
 ## Adding a provider
-1. Create `providers/<name>.sh` with `--output` (and other) flags documented in
-   `usage()`.
-2. Add a `case` entry in `sync-docs.sh`.
+1. For simple `llms.txt` mirrors, add a `register_llms` entry in
+   `providers/registry.sh` (or run ad-hoc with `./sync-docs.sh --llms-provider ...`
+   without changing the repo).
+2. For custom flows, create `providers/<name>.sh` with `--output` (and other) flags
+   documented in `usage()`, then register it via `register_custom` in
+   `providers/registry.sh`.
 3. Ensure it exits non-zero on failures and cleans up temp files.
 4. Update README with a one-liner about the provider.
 

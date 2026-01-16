@@ -90,7 +90,7 @@ llms_mirror() {
 
   if [[ ${#URLS[@]} -eq 0 ]]; then
     echo "[$provider] No doc URLs found in $index_url" >&2
-    return 1
+    return 0
   fi
 
   local missing_file="$out_dir/missing.txt"
@@ -123,7 +123,8 @@ llms_mirror() {
     cp "$full_index_path" "$out_dir/llms-full.txt"
   fi
 
-  local title_provider="${provider^}"
+  local title_provider
+  title_provider="$(printf '%s' "$provider" | sed 's/^./\\U&/')"
   local index_md="$out_dir/index.md"
   {
     echo "# $title_provider docs"

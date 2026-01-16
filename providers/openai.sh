@@ -81,9 +81,14 @@ CONVERTER="$WORKDIR/convert-openai-api.rb"
 cat > "$CONVERTER" <<'RUBY'
 require "yaml"
 require "fileutils"
+require "date"
 
 spec_path, out_dir, source_url, generated_at = ARGV
-spec = YAML.safe_load(File.read(spec_path), aliases: true)
+spec = YAML.safe_load(
+  File.read(spec_path),
+  aliases: true,
+  permitted_classes: [Date, Time]
+)
 
 info = spec["info"] || {}
 paths = spec["paths"] || {}
@@ -258,8 +263,8 @@ groups.each do |group, ops|
           schema = schema_label(param_obj["schema"])
           description = format_description(param_obj["description"])
           line = "- `#{name}` (#{location}, #{required})"
-          line += " `#{schema}`" unless schema.empty()
-          line += ": #{description}" unless description.empty()
+          line += " `#{schema}`" unless schema.to_s.empty?
+          line += ": #{description}" unless description.empty?
           file.puts line
         end
       end

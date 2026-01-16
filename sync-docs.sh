@@ -1,47 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/providers/registry.sh"
+
 usage() {
-  cat <<'USAGE'
+  local provider_preview
+  provider_preview="$(all_providers | tr '\n' ' ')"
+  cat <<USAGE
 Usage: ./sync-docs.sh [--output DIR] [--version-label LABEL|--timestamp-label] [--latest-alias NAME] [provider ...]
        ./sync-docs.sh --interactive
+       ./sync-docs.sh --llms-provider name index_url [full_index_url] [strip_prefix] [strip_suffix]
+       ./sync-docs.sh --list
 
 Fetch docs for the given providers (default: openai gemini anthropic).
 Outputs land in DIR/<provider>, so you can vendor docs inside your project for
 LLM RAG or offline use.
 
-Providers available:
-- openai
-- gemini
-- anthropic
-- huggingface
-- openrouter
-- cohere
-- mistral
-- supabase
-- groq
-- xai
-- stripe
-- cloudflare
-- netlify
-- twilio
-- digitalocean
-- railway
-- neon
-- turso
-- prisma
-- pinecone
-- retool
-- zapier
-- perplexity
-- elevenlabs
-- pinata
-- datadog
-- workos
-- clerk
-- litellm
-- crewai
-- nextjs
+Providers available (use --list to print): ${provider_preview:-none}
 
 Examples:
   ./sync-docs.sh                                 # fetch OpenAI + Gemini + Anthropic into ./docs
@@ -58,6 +34,9 @@ INTERACTIVE=false
 VERSION_LABEL=""
 USE_TIMESTAMP_LABEL=false
 LATEST_ALIAS=""
+ADHOC_LLMS=()
+LIST_ONLY=false
+ADHOC_PROVIDER_NAMES=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -68,6 +47,34 @@ while [[ $# -gt 0 ]]; do
     -i|--interactive)
       INTERACTIVE=true
       shift
+      ;;
+    --llms-provider)
+      shift
+      # Usage: --llms-provider name index_url [full_index_url] [strip_prefix] [strip_suffix]
+      name="${1:-}"
+      index_url="${2:-}"
+      if [[ -z "$name" || -z "$index_url" ]]; then
+        echo "--llms-provider requires at least: name index_url" >&2
+        exit 1
+      fi
+      shift 2
+      full_index_url=""
+      strip_prefix=""
+      strip_suffix=""
+      if [[ $# -gt 0 && "${1:0:2}" != "--" ]]; then
+        full_index_url="$1"
+        shift
+      fi
+      if [[ $# -gt 0 && "${1:0:2}" != "--" ]]; then
+        strip_prefix="$1"
+        shift
+      fi
+      if [[ $# -gt 0 && "${1:0:2}" != "--" ]]; then
+        strip_suffix="$1"
+        shift
+      fi
+      ADHOC_LLMS+=("$name|$index_url|$full_index_url|$strip_prefix|$strip_suffix")
+      ADHOC_PROVIDER_NAMES+=("$name")
       ;;
     --version-label)
       VERSION_LABEL="${2:-}"
@@ -81,6 +88,10 @@ while [[ $# -gt 0 ]]; do
       LATEST_ALIAS="${2:-}"
       shift 2
       ;;
+    --list)
+      LIST_ONLY=true
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -92,16 +103,29 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ ${#providers[@]} -eq 0 ]]; then
-  providers=(openai gemini anthropic)
+if [[ "$LIST_ONLY" == true ]]; then
+  all_providers
+  exit 0
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ ${#ADHOC_LLMS[@]} -gt 0 ]]; then
+  for entry in "${ADHOC_LLMS[@]}"; do
+    IFS="|" read -r name index_url full_index_url strip_prefix strip_suffix <<< "$entry"
+    register_llms "$name" "$index_url" "$full_index_url" "$strip_prefix" "$strip_suffix"
+  done
+fi
+
+if [[ ${#providers[@]} -eq 0 ]]; then
+  providers=("${DEFAULT_PROVIDERS[@]}")
+fi
 
 if [[ "$INTERACTIVE" == true ]]; then
   default_providers="${providers[*]}"
   if [[ -z "$default_providers" ]]; then
     default_providers="openai gemini anthropic"
+  fi
+  if [[ ${#ADHOC_PROVIDER_NAMES[@]} -gt 0 ]]; then
+    default_providers+=" ${ADHOC_PROVIDER_NAMES[*]}"
   fi
 
   read -r -p "Output directory [${OUTPUT_ROOT}]: " answer
@@ -109,7 +133,7 @@ if [[ "$INTERACTIVE" == true ]]; then
     OUTPUT_ROOT="$answer"
   fi
 
-  echo "Available providers: openai gemini anthropic huggingface openrouter cohere mistral supabase groq xai stripe cloudflare netlify twilio digitalocean railway neon turso prisma pinecone retool zapier perplexity elevenlabs pinata datadog workos clerk litellm crewai nextjs"
+  echo "Available providers: $(all_providers | tr '\\n' ' ')"
   read -r -p "Providers (space separated) [${default_providers}]: " answer
   if [[ -n "${answer:-}" ]]; then
     providers=($answer)
@@ -141,6 +165,59 @@ if [[ "$USE_TIMESTAMP_LABEL" == true && -z "$VERSION_LABEL" ]]; then
   VERSION_LABEL="$(date -u +"%Y%m%d-%H%M%S")"
 fi
 
+in_list() {
+  local needle="$1"; shift
+  for item in "$@"; do
+    if [[ "$item" == "$needle" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+merge_adhoc_providers() {
+  if [[ ${#ADHOC_PROVIDER_NAMES[@]} -gt 0 ]]; then
+    for name in "${ADHOC_PROVIDER_NAMES[@]}"; do
+      if ! in_list "$name" "${providers[@]}"; then
+        providers+=("$name")
+      fi
+    done
+  fi
+}
+
+run_provider() {
+  local provider="$1"
+  local base_dir="$2"
+
+  if ! load_provider "$provider"; then
+    echo "Unknown provider: $provider" >&2
+    exit 1
+  fi
+
+  local kind="$CURRENT_KIND"
+  case "$kind" in
+    custom)
+      "$SCRIPT_DIR/providers/$CURRENT_SCRIPT" --output "$base_dir"
+      ;;
+    llms)
+      "$SCRIPT_DIR/providers/generic-llms.sh" \
+        --provider "$provider" \
+        --index-url "$CURRENT_INDEX" \
+        --full-index-url "$CURRENT_FULL_INDEX" \
+        --strip-prefix "$CURRENT_STRIP_PREFIX" \
+        --strip-suffix "$CURRENT_STRIP_SUFFIX" \
+        --throttle-seconds "$CURRENT_THROTTLE" \
+        --output "$base_dir"
+      ;;
+    *)
+      echo "Unknown provider kind for $provider: $kind" >&2
+      exit 1
+      ;;
+  esac
+}
+
+merge_adhoc_providers
+
 for provider in "${providers[@]}"; do
   base_dir="$OUTPUT_ROOT/$provider"
   label=""
@@ -149,105 +226,7 @@ for provider in "${providers[@]}"; do
     base_dir="$base_dir/$label"
   fi
 
-  case "$provider" in
-    openai)
-      "$SCRIPT_DIR/providers/openai.sh" --output "$base_dir"
-      ;;
-    gemini)
-      "$SCRIPT_DIR/providers/gemini.sh" --output "$base_dir"
-      ;;
-    anthropic)
-      "$SCRIPT_DIR/providers/anthropic.sh" --output "$base_dir"
-      ;;
-    huggingface)
-      "$SCRIPT_DIR/providers/huggingface.sh" --output "$base_dir"
-      ;;
-    openrouter)
-      "$SCRIPT_DIR/providers/openrouter.sh" --output "$base_dir"
-      ;;
-    cohere)
-      "$SCRIPT_DIR/providers/cohere.sh" --output "$base_dir"
-      ;;
-    mistral)
-      "$SCRIPT_DIR/providers/mistral.sh" --output "$base_dir"
-      ;;
-    supabase)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider supabase --index-url https://supabase.com/llms.txt --full-index-url https://supabase.com/llms-full.txt --strip-prefix https://supabase.com/ --output "$base_dir"
-      ;;
-    groq)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider groq --index-url https://console.groq.com/llms.txt --full-index-url https://console.groq.com/llms-full.txt --strip-prefix https://console.groq.com/ --output "$base_dir"
-      ;;
-    xai)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider xai --index-url https://docs.x.ai/llms.txt --strip-prefix https://docs.x.ai/ --output "$base_dir"
-      ;;
-    stripe)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider stripe --index-url https://docs.stripe.com/llms.txt --strip-prefix https://docs.stripe.com/ --output "$base_dir"
-      ;;
-    cloudflare)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider cloudflare --index-url https://developers.cloudflare.com/llms.txt --strip-prefix https://developers.cloudflare.com/ --output "$base_dir"
-      ;;
-    netlify)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider netlify --index-url https://docs.netlify.com/llms.txt --strip-prefix https://docs.netlify.com/ --output "$base_dir"
-      ;;
-    twilio)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider twilio --index-url https://www.twilio.com/docs/llms.txt --strip-prefix https://www.twilio.com/docs/ --output "$base_dir"
-      ;;
-    digitalocean)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider digitalocean --index-url https://docs.digitalocean.com/llms.txt --strip-prefix https://docs.digitalocean.com/ --output "$base_dir"
-      ;;
-    railway)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider railway --index-url https://railway.com/llms.txt --strip-prefix https://railway.com/ --output "$base_dir"
-      ;;
-    neon)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider neon --index-url https://neon.com/llms.txt --strip-prefix https://neon.com/ --output "$base_dir"
-      ;;
-    turso)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider turso --index-url https://docs.turso.tech/llms.txt --strip-prefix https://docs.turso.tech/ --output "$base_dir"
-      ;;
-    prisma)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider prisma --index-url https://www.prisma.io/docs/llms.txt --strip-prefix https://www.prisma.io/docs/ --output "$base_dir"
-      ;;
-    pinecone)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider pinecone --index-url https://docs.pinecone.io/llms.txt --strip-prefix https://docs.pinecone.io/ --output "$base_dir"
-      ;;
-    retool)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider retool --index-url https://docs.retool.com/llms.txt --strip-prefix https://docs.retool.com/ --output "$base_dir"
-      ;;
-    zapier)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider zapier --index-url https://docs.zapier.com/llms.txt --strip-prefix https://docs.zapier.com/ --output "$base_dir"
-      ;;
-    perplexity)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider perplexity --index-url https://docs.perplexity.ai/llms.txt --strip-prefix https://docs.perplexity.ai/ --output "$base_dir"
-      ;;
-    elevenlabs)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider elevenlabs --index-url https://elevenlabs.io/docs/llms.txt --strip-prefix https://elevenlabs.io/docs/ --output "$base_dir"
-      ;;
-    pinata)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider pinata --index-url https://docs.pinata.cloud/llms.txt --strip-prefix https://docs.pinata.cloud/ --output "$base_dir"
-      ;;
-    datadog)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider datadog --index-url https://www.datadoghq.com/llms.txt --strip-prefix https://www.datadoghq.com/ --output "$base_dir"
-      ;;
-    workos)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider workos --index-url https://workos.com/docs/llms.txt --strip-prefix https://workos.com/docs/ --output "$base_dir"
-      ;;
-    clerk)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider clerk --index-url https://clerk.com/docs/llms.txt --strip-prefix https://clerk.com/docs/ --output "$base_dir"
-      ;;
-    litellm)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider litellm --index-url https://docs.litellm.ai/llms.txt --strip-prefix https://docs.litellm.ai/ --output "$base_dir"
-      ;;
-    crewai)
-      "$SCRIPT_DIR/providers/generic-llms.sh" --provider crewai --index-url https://docs.crewai.com/llms.txt --strip-prefix https://docs.crewai.com/ --output "$base_dir"
-      ;;
-    nextjs)
-      "$SCRIPT_DIR/providers/nextjs.sh" --output "$base_dir"
-      ;;
-    *)
-      echo "Unknown provider: $provider" >&2
-      exit 1
-      ;;
-  esac
+  run_provider "$provider" "$base_dir"
 
   if [[ -n "$LATEST_ALIAS" && -n "$label" ]]; then
     alias_path="$OUTPUT_ROOT/$provider/$LATEST_ALIAS"
