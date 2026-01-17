@@ -580,6 +580,7 @@ if [[ -z "$SOURCE_URL" && ${#providers[@]} -eq 0 ]]; then
 fi
 
 mkdir -p "$OUTPUT_ROOT"
+OUTPUT_ROOT="$(cd "$OUTPUT_ROOT" && pwd -P)"
 
 RUN_TIMESTAMP="$(common_timestamp_utc)"
 manifest_entries=()
