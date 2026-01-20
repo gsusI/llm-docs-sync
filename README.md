@@ -1,9 +1,12 @@
 # LLM Docs Sync
 
-Dependency-light scripts that vendor official docs into your project so local tools
-and RAG jobs can ingest them offline (OpenAI, Gemini, Anthropic, Hugging Face,
+Dependency-light scripts that vendor official documentation into your project so local tools
+and RAG jobs can ingest it offline (OpenAI, Gemini, Anthropic, Hugging Face,
 OpenRouter, Cohere, Mistral, Next.js, and a bunch of provider mirrors like
 Supabase/Groq/Stripe/Cloudflare/etc.).
+
+This repo syncs docs about LLMs and any library (APIs, SDKs, guides) — it does not download
+LLM models or weights.
 
 ## Features
 - Deterministic, idempotent fetches (no timestamps unless you opt in with `--version-label`).
